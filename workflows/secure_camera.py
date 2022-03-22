@@ -9,15 +9,15 @@ from helpers import tf_helpers
 from loguru import logger
 from simswap import swap
 
-def faceswap(batch_faces):
 
+def faceswap(batch_faces):
     batch_a, batch_b = tf.split(batch_faces, num_or_size_splits=2, axis=0)
     swapped_faces = swap(batch_a, batch_b)
     return swapped_faces
 
-class ManipulationClassification(object):
 
-    def __init__(self, nip_model, manipulations=None, distribution=None,
+class ManipulationClassification(object):
+    def __init__(self, nip_model, distribution=None,
                  fan_args=None, trainable=None,
                  raw_patch_size=128, loss_metric='L2',
                  # simswap stuff
@@ -89,89 +89,11 @@ class ManipulationClassification(object):
                 'Loaded NIP weights from {}'.format(nip_pretrained_dirname))
 
         # Several paths for post-processing ----------------------------------------------------------------------------
-        with tf.name_scope('distribution'):
+        self._operations = OrderedDict()
+        self._forensics_classes = ['native', 'faceswap']
+        self._operations['faceswap'] = lambda x: faceswap(x)
 
-            # Parse manipulation specs
-            manipulations = manipulations or ['sharpen', 'resample',
-                                              'gaussian', 'jpeg']
-
-            self._strengths = {'sharpen': 1, 'resample': 50, 'gaussian': 0.83,
-                               'jpeg': 80, 'awgn': 5.1, 'gamma': 3,
-                               'median': 3}
-
-            self._strengths_range = {
-                'sharpen': (0.25, 1.5),
-                'resample': (40, 90),
-                'gaussian': (0.5, 7),
-                'jpeg': (50, 90),
-                'awgn': (1, 5),
-                'gamma': (1, 5),
-                'median': (3, 9)
-            }
-
-            manipulations_set = set()
-            for m in manipulations:
-                spec = m.split(':')
-                manipulations_set.add(spec[0])
-                if len(spec) > 1:
-                    self._strengths[spec[0]] = float(spec[-1])
-
-            if any(x not in self._strengths.keys() for x in manipulations_set):
-                raise ValueError(
-                    'Unsupported manipulation requested! Available: {}'.format(
-                        self._strengths.keys()))
-
-            self._operations = OrderedDict()
-            self._forensics_classes = ['native']
-
-            if 'sharpen' in manipulations_set:
-                self._operations['sharpen'] = lambda x,
-                                                     strength: tf_helpers.manipulation_sharpen(
-                    x, strength, hsv=True)
-                self._forensics_classes.append(
-                    'sharpen:{}'.format(self._strengths['sharpen']))
-
-            if 'resample' in manipulations_set:
-                self._operations['resample'] = lambda x,
-                                                      strength: tf_helpers.manipulation_resample(
-                    x, strength)
-                self._forensics_classes.append(
-                    'resample:{}'.format(self._strengths['resample']))
-
-            if 'gaussian' in manipulations_set:
-                self._operations['gaussian'] = lambda x,
-                                                      strength: tf_helpers.manipulation_gaussian(
-                    x, 5, strength)
-                self._forensics_classes.append(
-                    'gaussian:{}'.format(self._strengths['gaussian']))
-
-            if 'jpeg' in manipulations_set:
-                self._operations['jpeg'] = jpeg.differentiable_jpeg
-                self._forensics_classes.append(
-                    'jpeg:{}'.format(self._strengths['jpeg']))
-
-            if 'awgn' in manipulations_set:
-                self._operations['awgn'] = lambda x,
-                                                  strength: tf_helpers.manipulation_awgn(
-                    x, strength / 255)
-                self._forensics_classes.append(
-                    'awgn:{}'.format(self._strengths['awgn']))
-
-            if 'gamma' in manipulations_set:
-                self._operations['gamma'] = lambda x,
-                                                   strength: tf_helpers.manipulation_gamma(
-                    x, strength)
-                self._forensics_classes.append(
-                    'gamma:{}'.format(self._strengths['gamma']))
-
-            if 'median' in manipulations_set:
-                self._operations['median'] = lambda x,
-                                                    strength: tf_helpers.manipulation_median(
-                    x, strength)
-                self._forensics_classes.append(
-                    'median:{}'.format(self._strengths['median']))
-
-            assert len(self._forensics_classes) == self.n_classes
+        assert len(self._forensics_classes) == self.n_classes
 
         # Configure compression
         if distribution['compression'] == 'jpeg':
